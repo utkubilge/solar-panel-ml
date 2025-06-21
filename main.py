@@ -1,116 +1,172 @@
 import pandas as pd
 import numpy as np
-from lightgbm import LGBMRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_squared_error
-from sklearn.ensemble import RandomForestRegressor
-import matplotlib.pyplot as plt
+from sklearn.linear_model import (
+    LinearRegression,
+    Ridge,
+    Lasso,
+    ElasticNet,
+    PassiveAggressiveRegressor,
+    HuberRegressor,
+    TheilSenRegressor,
+    BayesianRidge,
+    SGDRegressor,
+    PoissonRegressor,
+)
+from sklearn.ensemble import (
+    RandomForestRegressor,
+    GradientBoostingRegressor,
+    AdaBoostRegressor,
+    BaggingRegressor,
+    ExtraTreesRegressor,
+    StackingRegressor,
+    VotingRegressor,
+    HistGradientBoostingRegressor,
+)
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.metrics import (
+    mean_squared_error,
+    r2_score,
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+)
+from sklearn.preprocessing import StandardScaler
+import time
+from lightgbm import LGBMRegressor
+from catboost import CatBoostRegressor
+from xgboost import XGBRegressor
 
-# Load data
-gen = pd.read_csv('./data/Plant_2_Generation_Data.csv')
-weather = pd.read_csv('./data/Plant_2_Weather_Sensor_Data.csv')
 
-# Merge on 'DATE_TIME' and 'PLANT_ID'
-data = pd.merge(gen, weather, on=['DATE_TIME'])
+# 1. Load the data for both plants
+weather_df1 = pd.read_csv("./data/Plant_1_Weather_Sensor_Data.csv")
+generation_df1 = pd.read_csv("./data/Plant_1_Generation_Data.csv")
+weather_df2 = pd.read_csv("./data/Plant_2_Weather_Sensor_Data.csv")
+generation_df2 = pd.read_csv("./data/Plant_2_Generation_Data.csv")
 
-# Convert DATE_TIME to datetime and extract features
-data['DATE_TIME'] = pd.to_datetime(data['DATE_TIME'])
-data['HOUR'] = data['DATE_TIME'].dt.hour
-data['DAY'] = data['DATE_TIME'].dt.day
-data['MONTH'] = data['DATE_TIME'].dt.month
-data['WEEKDAY'] = data['DATE_TIME'].dt.weekday
+# Convert DATE_TIME to datetime objects
+weather_df1["DATE_TIME"] = pd.to_datetime(weather_df1["DATE_TIME"])
+generation_df1["DATE_TIME"] = pd.to_datetime(generation_df1["DATE_TIME"], dayfirst=True)
+weather_df2["DATE_TIME"] = pd.to_datetime(weather_df2["DATE_TIME"])
+generation_df2["DATE_TIME"] = pd.to_datetime(generation_df2["DATE_TIME"])
 
-# Remove night-time rows (when AC_POWER is zero)
-data = data[data['AC_POWER'] > 0]
+# Merge the datasets on 'DATE_TIME' and 'PLANT_ID'
+merged_df1 = pd.merge(generation_df1, weather_df1, on=["DATE_TIME"])
+merged_df2 = pd.merge(generation_df2, weather_df2, on=["DATE_TIME"])
 
-# Feature interaction
-data['IRRADIATION_X_MODULE_TEMP'] = data['IRRADIATION'] * data['MODULE_TEMPERATURE']
+# Combine both plants' data
+merged_df = pd.concat([merged_df1, merged_df2], ignore_index=True)
 
-# Additional feature engineering
-data['TEMP_DIFF'] = data['MODULE_TEMPERATURE'] - data['AMBIENT_TEMPERATURE']
-data['HOUR_SIN'] = np.sin(2 * np.pi * data['HOUR'] / 24)
-data['HOUR_COS'] = np.cos(2 * np.pi * data['HOUR'] / 24)
+# Remove rows where AC_POWER is zero
+merged_df = merged_df[merged_df["AC_POWER"] != 0]
 
 # Select features and target
-features = [
-    'AMBIENT_TEMPERATURE',
-    'MODULE_TEMPERATURE',
-    'IRRADIATION',
-    'HOUR',
-    'DAY',
-    'MONTH',
-    'WEEKDAY',
-    'IRRADIATION_X_MODULE_TEMP',
-    'TEMP_DIFF',
-    'HOUR_SIN',
-    'HOUR_COS'
-]
-X = data[features]
-y = data['AC_POWER']
+features = merged_df[["AMBIENT_TEMPERATURE", "MODULE_TEMPERATURE", "IRRADIATION"]]
+target = merged_df["AC_POWER"]
 
-# Train-test split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Split the data into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(
+    features, target, test_size=0.2, random_state=42
+)
 
-# Train LightGBM with more estimators and tuned parameters
-lgbm = LGBMRegressor(n_estimators=300, learning_rate=0.05, max_depth=7, random_state=42)
-lgbm.fit(X_train, y_train)
-y_pred = lgbm.predict(X_test)
+# Scale features for models that need it
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-# Metrics
-r2 = r2_score(y_test, y_pred)
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-print(f'R2 Score: {r2:.4f}')
-print(f'MSE: {mse:.2f}')
-print(f'RMSE: {rmse:.2f}')
+# Define regression models (added more ensemble and linear models)
+models = {
+    "Linear Regression": LinearRegression(),
+    "Ridge Regression": Ridge(),
+    "Lasso Regression": Lasso(),
+    "ElasticNet": ElasticNet(),
+    "PassiveAggressive": PassiveAggressiveRegressor(max_iter=1000, random_state=42),
+    "HuberRegressor": HuberRegressor(),
+    "TheilSen": TheilSenRegressor(random_state=42),
+    "BayesianRidge": BayesianRidge(),
+    "SGDRegressor": SGDRegressor(max_iter=1000, tol=1e-3, random_state=42),
+    "PoissonRegressor": PoissonRegressor(max_iter=1000),
+    "Decision Tree": DecisionTreeRegressor(random_state=42),
+    "Random Forest": RandomForestRegressor(n_estimators=100, random_state=42),
+    "Gradient Boosting": GradientBoostingRegressor(n_estimators=100, random_state=42),
+    "HistGradientBoosting": HistGradientBoostingRegressor(max_iter=100, random_state=42),
+    "AdaBoost": AdaBoostRegressor(n_estimators=100, random_state=42),
+    "Bagging": BaggingRegressor(n_estimators=100, random_state=42),
+    "Extra Trees": ExtraTreesRegressor(n_estimators=100, random_state=42),
+    "K-Nearest Neighbors": KNeighborsRegressor(n_neighbors=5),
+    "Voting Regressor": VotingRegressor([
+        ('rf', RandomForestRegressor(n_estimators=50, random_state=42)),
+        ('gb', GradientBoostingRegressor(n_estimators=50, random_state=42)),
+        ('dt', DecisionTreeRegressor(random_state=42))
+    ]),
+    "Stacking Regressor": StackingRegressor(
+        estimators=[
+            ('rf', RandomForestRegressor(n_estimators=50, random_state=42)),
+            ('gb', GradientBoostingRegressor(n_estimators=50, random_state=42)),
+            ('dt', DecisionTreeRegressor(random_state=42))
+        ],
+        final_estimator=LinearRegression()
+    ),
+    "LightGBM": LGBMRegressor(n_estimators=100, random_state=42),
+    "CatBoost": CatBoostRegressor(n_estimators=100, random_state=42, verbose=0),
+    "XGBoost": XGBRegressor(n_estimators=100, random_state=42),
+}
 
-# Plot Actual vs Predicted
-plt.figure(figsize=(8,5))
-plt.scatter(y_test, y_pred, alpha=0.3)
-plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-plt.xlabel('Actual AC_POWER')
-plt.ylabel('Predicted AC_POWER')
-plt.title('LightGBM: Actual vs Predicted AC_POWER')
-plt.show()
+# Evaluate models and collect metrics
+results_list = []
+for name, model in models.items():
+    start_time = time.time()
+    # Use scaled data for models that benefit from it
+    if name in [
+        "Linear Regression",
+        "Ridge Regression",
+        "Lasso Regression",
+        "ElasticNet",
+        "K-Nearest Neighbors",
+    ]:
+        model.fit(X_train_scaled, y_train)
+        y_pred = model.predict(X_test_scaled)
+    else:
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+    elapsed_time = time.time() - start_time
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    r2 = r2_score(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    results_list.append({
+        "Model": name,
+        "MSE": mse,
+        "RMSE": rmse,
+        "R2": r2,
+        "MAE": mae,
+        "Time (s)": elapsed_time
+    })
 
-# Residual plot for error analysis
-residuals = y_test - y_pred
-plt.figure(figsize=(8,5))
-plt.scatter(y_pred, residuals, alpha=0.3)
-plt.axhline(0, color='red', linestyle='--')
-plt.xlabel('Predicted AC_POWER')
-plt.ylabel('Residuals')
-plt.title('Residual Plot')
-plt.show()
+# Sort by R2 descending
+results_list = sorted(results_list, key=lambda x: x["R2"], reverse=True)
 
-# Train Random Forest with tuned parameters
-rf = RandomForestRegressor(n_estimators=200, max_depth=12, random_state=42, n_jobs=-1)
-rf.fit(X_train, y_train)
-y_pred = rf.predict(X_test)
+print("Model Performance Comparison (sorted by R2):")
+for res in results_list:
+    print(
+        f"{res['Model']}: R2={res['R2']:.4f}, MSE={res['MSE']:.2f}, RMSE={res['RMSE']:.2f}, MAE={res['MAE']:.2f}, Time={res['Time (s)']:.2f}s"
+    )
 
-# Metrics
-r2 = r2_score(y_test, y_pred)
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-print(f'R2 Score: {r2:.4f}')
-print(f'MSE: {mse:.2f}')
-print(f'RMSE: {rmse:.2f}')
-
-# Plot Actual vs Predicted
-plt.figure(figsize=(8,5))
-plt.scatter(y_test, y_pred, alpha=0.3)
-plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
-plt.xlabel('Actual AC_POWER')
-plt.ylabel('Predicted AC_POWER')
-plt.title('Random Forest: Actual vs Predicted AC_POWER')
-plt.show()
-
-# Residual plot for error analysis
-residuals = y_test - y_pred
-plt.figure(figsize=(8,5))
-plt.scatter(y_pred, residuals, alpha=0.3)
-plt.axhline(0, color='red', linestyle='--')
-plt.xlabel('Predicted AC_POWER')
-plt.ylabel('Residuals')
-plt.title('Random Forest: Residual Plot')
-plt.show()
+# Optional: Show a few predictions from the best model (highest R2)
+best_model_name = results_list[0]["Model"]
+best_model = models[best_model_name]
+if best_model_name in [
+    "Linear Regression",
+    "Ridge Regression",
+    "Lasso Regression",
+    "ElasticNet",
+    "K-Nearest Neighbors",
+]:
+    best_model.fit(X_train_scaled, y_train)
+    y_pred_best = best_model.predict(X_test_scaled)
+else:
+    best_model.fit(X_train, y_train)
+    y_pred_best = best_model.predict(X_test)
+results = pd.DataFrame({"Actual": y_test.values, "Predicted": y_pred_best})
+print(f"\nSample predictions (best model - {best_model_name}):")
+print(results.head())
