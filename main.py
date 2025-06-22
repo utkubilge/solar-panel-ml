@@ -38,19 +38,19 @@ from catboost import CatBoostRegressor
 from xgboost import XGBRegressor
 
 
-# 1. Load the data for both plants
+# Load datasets
 weather_df1 = pd.read_csv("./data/Plant_1_Weather_Sensor_Data.csv")
 generation_df1 = pd.read_csv("./data/Plant_1_Generation_Data.csv")
 weather_df2 = pd.read_csv("./data/Plant_2_Weather_Sensor_Data.csv")
 generation_df2 = pd.read_csv("./data/Plant_2_Generation_Data.csv")
 
-# Convert DATE_TIME to datetime objects
+# Convert DATE_TIME to normalized datetime format
 weather_df1["DATE_TIME"] = pd.to_datetime(weather_df1["DATE_TIME"])
 generation_df1["DATE_TIME"] = pd.to_datetime(generation_df1["DATE_TIME"], dayfirst=True)
 weather_df2["DATE_TIME"] = pd.to_datetime(weather_df2["DATE_TIME"])
 generation_df2["DATE_TIME"] = pd.to_datetime(generation_df2["DATE_TIME"])
 
-# Merge the datasets on 'DATE_TIME' and 'PLANT_ID'
+# Merge the datasets on 'DATE_TIME'
 merged_df1 = pd.merge(generation_df1, weather_df1, on=["DATE_TIME"])
 merged_df2 = pd.merge(generation_df2, weather_df2, on=["DATE_TIME"])
 
@@ -74,7 +74,7 @@ scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# Define regression models (added more ensemble and linear models)
+# Define regression models
 models = {
     "Linear Regression": LinearRegression(),
     "Ridge Regression": Ridge(),
@@ -112,11 +112,11 @@ models = {
     "XGBoost": XGBRegressor(n_estimators=100, random_state=42),
 }
 
-# Evaluate models and collect metrics
+# Test models and collect metrics
 results_list = []
 for name, model in models.items():
     start_time = time.time()
-    # Use scaled data for models that benefit from it
+    # Use scaled data 
     if name in [
         "Linear Regression",
         "Ridge Regression",
@@ -152,7 +152,7 @@ for res in results_list:
         f"{res['Model']}: R2={res['R2']:.4f}, MSE={res['MSE']:.2f}, RMSE={res['RMSE']:.2f}, MAE={res['MAE']:.2f}, Time={res['Time (s)']:.2f}s"
     )
 
-# Optional: Show a few predictions from the best model (highest R2)
+# Show Predictions
 best_model_name = results_list[0]["Model"]
 best_model = models[best_model_name]
 if best_model_name in [
